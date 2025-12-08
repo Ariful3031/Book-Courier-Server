@@ -3,6 +3,8 @@ const cors = require('cors');
 const app = express();
 require('dotenv').config()
 const port = process.env.PORT || 3000
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
+
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 
@@ -35,7 +37,23 @@ async function run() {
         // Orders Related api
 
         app.get('/orders', async (req, res) => {
+            const query = {};
+            const { email } = req.query;
+            if (email) {
+                query.email = email;
+            }
 
+            const cursor = ordersCollection.find(query);
+            const result = await cursor.toArray();
+            res.send(result)
+
+        })
+
+        app.get('/orders/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await ordersCollection.findOne(query)
+            res.send(result)
         })
         app.post('/orders', async (req, res) => {
             const order = req.body;
@@ -68,6 +86,44 @@ async function run() {
             const result = await booksCollection.insertOne(book)
             res.send(result)
         })
+
+
+        // payment related api
+        app.post('/payment-checkout-session', async (req, res) => {
+            const paymentInfo = req.body;
+            const amount = parseInt(paymentInfo.price) * 100;
+
+            const session = await stripe.checkout.sessions.create({
+                line_items: [
+                    {
+                        price_data: {
+                            currency: 'USD',
+                            unit_amount: amount,
+                            product_data: {
+                                name: `please pay for:${paymentInfo.bookTitle}`
+                            }
+                        },
+                        quantity: 1,
+                    },
+                ],
+                mode: 'payment',
+                metadata: {
+                    orderId: paymentInfo.orderId,
+                    orderName: paymentInfo.orderName,
+                },
+                customer_email: paymentInfo.customer_email,
+                success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+            });
+
+            console.log(session)
+
+
+
+            res.send({ url: session.url })
+
+        });
+
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
@@ -75,7 +131,7 @@ async function run() {
         // Ensures that the client will close when you finish/error
         // await client.close();
     }
-} 
+}
 run().catch(console.dir);
 
 
