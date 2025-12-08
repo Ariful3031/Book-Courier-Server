@@ -30,31 +30,38 @@ async function run() {
 
         const db = client.db('book_courier');
         const booksCollection = db.collection('books');
+        const ordersCollection = db.collection('orders')
+
+        // Orders Related api
+
+        app.get('/orders', async (req, res) => {
+
+        })
+        app.post('/orders', async (req, res) => {
+            const order = req.body;
+            const result = await ordersCollection.insertOne(order);
+            res.send(result);
+
+        })
 
         // books api
 
         app.get('/books', async (req, res) => {
-            const query ={}
+            const query = {}
 
-            const cursor =booksCollection.find(query)
-            const result= await cursor.toArray();
+            const cursor = booksCollection.find(query)
+            const result = await cursor.toArray();
             res.send(result)
 
         })
 
-        app.get('/books/:id',async(req,res)=>{
-            const id= req.params.id;
-            const query= { _id: new ObjectId(id)};
-            const result= await booksCollection.findOne(query);
+        app.get('/books/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await booksCollection.findOne(query);
             res.send(result)
         })
 
-        //  app.get('/courses/:id', async (req, res) => {
-        //     const id = req.params.id;
-        //     const query = { _id: new ObjectId(id) };
-        //     const result = await coursesCollection.findOne(query);
-        //     res.send(result);
-        // })
 
         app.post('/books', async (req, res) => {
             const book = req.body;
@@ -68,7 +75,7 @@ async function run() {
         // Ensures that the client will close when you finish/error
         // await client.close();
     }
-}
+} 
 run().catch(console.dir);
 
 
