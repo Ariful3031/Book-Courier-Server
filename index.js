@@ -3,6 +3,16 @@ const cors = require('cors');
 const app = express();
 require('dotenv').config()
 const port = process.env.PORT || 3000
+
+const crypto = require("crypto");
+
+function generateTrackingId() {
+    const prefix = "PRCL";
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, ""); // YYYYMMDD
+    const random = crypto.randomBytes(3).toString("hex").toUpperCase(); // 6 random chars
+
+    return `${prefix}-${date}-${random}`;
+}
 const stripe = require('stripe')(process.env.STRIPE_SECRET);
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -32,7 +42,8 @@ async function run() {
 
         const db = client.db('book_courier');
         const booksCollection = db.collection('books');
-        const ordersCollection = db.collection('orders')
+        const ordersCollection = db.collection('orders');
+        const paymentCollection = db.collection('payments');
 
         // Orders Related api
 
@@ -88,7 +99,7 @@ async function run() {
         })
 
 
-        // payment related api
+        // payment related task
         app.post('/payment-checkout-session', async (req, res) => {
             const paymentInfo = req.body;
             const amount = parseInt(paymentInfo.price) * 100;
@@ -114,6 +125,7 @@ async function run() {
                 customer_email: paymentInfo.customer_email,
                 success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
                 cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+                expand: ['payment_intent'],
             });
 
             console.log(session)
@@ -123,6 +135,77 @@ async function run() {
             res.send({ url: session.url })
 
         });
+
+        app.patch('/payment-success', async (req, res) => {
+            const sessionId = req.query.session_id;
+            //   console.log('session id', sessionId);
+            const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+            // console.log('session reterieve', session)
+            const transactionId = session.payment_intent;
+            const query = { transactionId: transactionId }
+
+            const paymentExist = await paymentCollection.findOne(query);
+            console.log(paymentExist)
+            if (paymentExist) {
+                return res.send({ message: 'already exists', transactionId, trackingId: paymentExist.trackingId })
+            }
+
+            const trackingId = generateTrackingId();
+            if (session.payment_status === 'paid') {
+                const id = session.metadata.orderId;
+                const query = { _id: new ObjectId(id) }
+                const update = {
+                    $set: {
+                        paymentStatus: 'paid',
+                        status: 'complete',
+                        // paidAt: new Date(),
+                        trackingId: trackingId
+                    }
+                }
+                const result = await ordersCollection.updateOne(query, update)
+
+                // payment entry
+                const payment = {
+                    amount: session.amount_total / 100,
+                    currency: session.currency,
+                    customer_email: session.customer_email,
+                    orderId: session.metadata.orderId,
+                    orderName: session.metadata.orderName,
+                    transactionId: session.payment_intent,
+                    paymentStatus: session.payment_status,
+                    status: session.status,
+                    paidAt: new Date(),
+                    trackingId: trackingId
+                }
+
+                if (session.payment_status === 'paid') {
+
+                    const resultPayment = await paymentCollection.insertOne(payment)
+                    res.send({
+                        success: true,
+                        modifyOrder: result,
+                        trackingId: trackingId,
+                        transactionId: session.payment_intent,
+                        paymentInfo: resultPayment
+                    })
+                }
+            }
+            res.send({ success: false })
+        })
+
+        //Payment related api
+
+        app.get('/payments', async (req, res) => {
+            const email = req.query.email;
+            const query = {}
+            if (email) {
+                query.customer_email = email;
+            }
+            const cursor = paymentCollection.find(query).sort({paidAt: -1})
+            const result = await cursor.toArray();
+            res.send(result);
+        })
 
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
@@ -142,3 +225,25 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log(`Example app listening on port ${port}`)
 })
+
+
+ // // payment histroy realted api
+
+    // app.get('/payments', verifyFBToken, async (req, res) => {
+    //   const email = req.query.email;
+    //   const query = {}
+
+    //   console.log('headers', req.headers);
+
+    //   if (email) {
+    //     query.customerEmail = email;
+
+    //     // check email address 
+    //     if (email !== req.decoded_email) {
+    //       return res.status(403).send({ message: 'forbidden access' })
+    //     }
+    //   }
+    //   const cursor = paymentsCollection.find(query).sort({ paidAt: -1 });
+    //   const result = await cursor.toArray();
+    //   res.send(result);
+    // })
