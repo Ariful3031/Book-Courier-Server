@@ -45,14 +45,42 @@ async function run() {
         const ordersCollection = db.collection('orders');
         const paymentCollection = db.collection('payments');
         const userCollection = db.collection('users');
+        const librarianCollection = db.collection('librarian');
+
+        // librarian related api
+
+        app.get('/librarians',async(req,res)=>{
+            const query ={};
+            if(req.query.status){
+                query.status= req.query.status;
+            }
+            const cursor = librarianCollection.find(query);
+            const result = await cursor.toArray();
+            res.send(result);
+        })
+        app.post('/librarians', async(req,res)=>{
+            const librarian= req.body;
+            librarian.status='pending';
+            librarian.createAt = new Date();
+
+            const result = await librarianCollection.insertOne(librarian);
+            res.send(result);
+        })
 
 
         // User Related api
-        app.post('/users', async(req,res)=>{
+        app.post('/users', async (req, res) => {
             const user = req.body;
-            user.role= "user";
+            user.role = "user";
             user.createAt = new Date();
-            const result= await userCollection.insertOne(user)
+
+            const email = user.email;
+            const userExists = await userCollection.findOne({ email });
+
+            if (userExists) {
+                return res.send({ message: 'user already exists' });
+            }
+            const result = await userCollection.insertOne(user);
             res.send(result);
         })
 
