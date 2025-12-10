@@ -44,9 +44,20 @@ async function run() {
         const booksCollection = db.collection('books');
         const ordersCollection = db.collection('orders');
         const paymentCollection = db.collection('payments');
+        const userCollection = db.collection('users');
+
+
+        // User Related api
+        app.post('/users', async(req,res)=>{
+            const user = req.body;
+            user.role= "user";
+            user.createAt = new Date();
+            const result= await userCollection.insertOne(user)
+            res.send(result);
+        })
+
 
         // Orders Related api
-
         app.get('/orders', async (req, res) => {
             const query = {};
             const { email } = req.query;
@@ -202,7 +213,7 @@ async function run() {
             if (email) {
                 query.customer_email = email;
             }
-            const cursor = paymentCollection.find(query).sort({paidAt: -1})
+            const cursor = paymentCollection.find(query).sort({ paidAt: -1 })
             const result = await cursor.toArray();
             res.send(result);
         })
@@ -227,23 +238,3 @@ app.listen(port, () => {
 })
 
 
- // // payment histroy realted api
-
-    // app.get('/payments', verifyFBToken, async (req, res) => {
-    //   const email = req.query.email;
-    //   const query = {}
-
-    //   console.log('headers', req.headers);
-
-    //   if (email) {
-    //     query.customerEmail = email;
-
-    //     // check email address 
-    //     if (email !== req.decoded_email) {
-    //       return res.status(403).send({ message: 'forbidden access' })
-    //     }
-    //   }
-    //   const cursor = paymentsCollection.find(query).sort({ paidAt: -1 });
-    //   const result = await cursor.toArray();
-    //   res.send(result);
-    // })
