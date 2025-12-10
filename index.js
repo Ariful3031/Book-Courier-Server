@@ -49,21 +49,44 @@ async function run() {
 
         // librarian related api
 
-        app.get('/librarians',async(req,res)=>{
-            const query ={};
-            if(req.query.status){
-                query.status= req.query.status;
+        app.get('/librarians', async (req, res) => {
+            const query = {};
+            if (req.query.status) {
+                query.status = req.query.status;
             }
             const cursor = librarianCollection.find(query);
             const result = await cursor.toArray();
             res.send(result);
         })
-        app.post('/librarians', async(req,res)=>{
-            const librarian= req.body;
-            librarian.status='pending';
+        app.post('/librarians', async (req, res) => {
+            const librarian = req.body;
+            librarian.status = 'pending';
             librarian.createAt = new Date();
 
             const result = await librarianCollection.insertOne(librarian);
+            res.send(result);
+        })
+
+        app.patch('/librarians/:id', async (req, res) => {
+            const id = req.params.id
+            const status = req.body.status;
+            const query = { _id: new ObjectId(id) };
+            const UpdateDoc = {
+                $set: {
+                    status: status
+                }
+            }
+            const result = await librarianCollection.updateOne(query, UpdateDoc);
+             if(status==='approved'){
+                const email= req.body.email;
+                const useQuery = {email};
+                const updateUser={
+                    $set:{
+                        role: 'librarian'
+                    }
+                }
+                const userResult = await userCollection.updateOne(useQuery,updateUser);
+             }
             res.send(result);
         })
 
