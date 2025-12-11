@@ -77,21 +77,40 @@ async function run() {
                 }
             }
             const result = await librarianCollection.updateOne(query, UpdateDoc);
-             if(status==='approved'){
-                const email= req.body.email;
-                const useQuery = {email};
-                const updateUser={
-                    $set:{
+            if (status === 'approved') {
+                const email = req.body.email;
+                const useQuery = { email };
+                const updateUser = {
+                    $set: {
                         role: 'librarian'
                     }
                 }
-                const userResult = await userCollection.updateOne(useQuery,updateUser);
-             }
+                const userResult = await userCollection.updateOne(useQuery, updateUser);
+            }
             res.send(result);
         })
 
 
         // User Related api
+        app.get('/users', async (req, res) => {
+            const cursor = userCollection.find();
+            const result = await cursor.toArray();
+            res.send(result)
+        })
+
+        app.patch('/users/:id', async (req, res) => {
+            const id = req.params.id;
+            const roleInfo = req.body;
+            const query = { _id: new ObjectId(id) };
+            const updateDoc = {
+                $set: {
+                    role: roleInfo.role
+                }
+            }
+            const result = await userCollection.updateOne(query, updateDoc);
+            res.send(result);
+        })
+
         app.post('/users', async (req, res) => {
             const user = req.body;
             user.role = "user";
