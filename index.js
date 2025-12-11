@@ -6,6 +6,15 @@ const port = process.env.PORT || 3000
 
 const crypto = require("crypto");
 
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./book-courier-firebase-adminsdk.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
+
+
 function generateTrackingId() {
     const prefix = "PRCL";
     const date = new Date().toISOString().slice(0, 10).replace(/-/g, ""); // YYYYMMDD
@@ -21,6 +30,30 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 // middleware
 app.use(express.json());
 app.use(cors());
+
+// VerifyFirebaseToken
+
+const verifyFirebaseToken = async (req, res, next) => {
+    // console.log('headers in the middleware',req.headers?.authorization)
+    const token = req.headers.authorization;
+
+    if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+
+    try {
+        const idToken = token.split(' ')[1];
+        const decoded = await admin.auth().verifyIdToken(idToken);
+        // console.log('decoded in the token', decoded);
+        req.decoded_email = decoded.email;
+
+        next();
+    }
+    catch (err) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+
+}
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@simple-crud-server.30cfyeq.mongodb.net/?appName=simple-crud-server`;
@@ -98,7 +131,14 @@ async function run() {
             res.send(result)
         })
 
-        app.patch('/users/:id', async (req, res) => {
+        app.get('/users/:email/role', async (req, res) => {
+            const email = req.params.email;
+            const query = { email };
+            const user = await userCollection.findOne(query);
+            res.send({ role: user?.role || 'user ' })
+        })
+
+        app.patch('/users/:id/role', async (req, res) => {
             const id = req.params.id;
             const roleInfo = req.body;
             const query = { _id: new ObjectId(id) };
@@ -277,11 +317,16 @@ async function run() {
 
         //Payment related api
 
-        app.get('/payments', async (req, res) => {
+        app.get('/payments', verifyFirebaseToken, async (req, res) => {
             const email = req.query.email;
             const query = {}
             if (email) {
                 query.customer_email = email;
+
+                // check email address 
+                if(email !== req.decoded_email){
+                    return res.status(403).send({message: 'forbidden access'})
+                }
             }
             const cursor = paymentCollection.find(query).sort({ paidAt: -1 })
             const result = await cursor.toArray();
