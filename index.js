@@ -31,7 +31,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 app.use(express.json());
 app.use(cors());
 
-// VerifyFirebaseToken
+// middleware VerifyFirebaseToken
 
 const verifyFirebaseToken = async (req, res, next) => {
     // console.log('headers in the middleware',req.headers?.authorization)
@@ -80,6 +80,21 @@ async function run() {
         const userCollection = db.collection('users');
         const librarianCollection = db.collection('librarian');
 
+        // middleware admin before allowing admin activity
+        // mst be used after verifyFirebaseToken middleware
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded_email;
+            const query = { email };
+            const user = await userCollection.findOne(query);
+
+            if (!user || user.role !== 'admin') {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+
+            next();
+        }
+
+
         // librarian related api
 
         app.get('/librarians', async (req, res) => {
@@ -100,7 +115,7 @@ async function run() {
             res.send(result);
         })
 
-        app.patch('/librarians/:id', async (req, res) => {
+        app.patch('/librarians/:id', verifyFirebaseToken,verifyAdmin, async (req, res) => {
             const id = req.params.id
             const status = req.body.status;
             const query = { _id: new ObjectId(id) };
@@ -138,7 +153,7 @@ async function run() {
             res.send({ role: user?.role || 'user ' })
         })
 
-        app.patch('/users/:id/role', async (req, res) => {
+        app.patch('/users/:id/role', verifyFirebaseToken,verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const roleInfo = req.body;
             const query = { _id: new ObjectId(id) };
@@ -324,8 +339,8 @@ async function run() {
                 query.customer_email = email;
 
                 // check email address 
-                if(email !== req.decoded_email){
-                    return res.status(403).send({message: 'forbidden access'})
+                if (email !== req.decoded_email) {
+                    return res.status(403).send({ message: 'forbidden access' })
                 }
             }
             const cursor = paymentCollection.find(query).sort({ paidAt: -1 })
