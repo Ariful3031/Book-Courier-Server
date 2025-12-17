@@ -115,7 +115,7 @@ async function run() {
             res.send(result);
         })
 
-        app.patch('/librarians/:id', verifyFirebaseToken,verifyAdmin, async (req, res) => {
+        app.patch('/librarians/:id', verifyFirebaseToken, verifyAdmin, async (req, res) => {
             const id = req.params.id
             const status = req.body.status;
             const query = { _id: new ObjectId(id) };
@@ -140,8 +140,17 @@ async function run() {
 
 
         // User Related api
-        app.get('/users', async (req, res) => {
-            const cursor = userCollection.find();
+        app.get('/users', verifyFirebaseToken, async (req, res) => {
+            const searchText = req.query.searchText;
+            const query = {};
+            if (searchText) {
+                // query.displayName = {$regex: searchText, $options: 'i'}
+                query.$or = [
+                    { displayName: { $regex: searchText, $options: 'i' } },
+                    { email: { $regex: searchText, $options: 'i' } }
+                ]
+            }
+            const cursor = userCollection.find(query).sort({ createAt: -1 }).limit(5);
             const result = await cursor.toArray();
             res.send(result)
         })
@@ -153,7 +162,7 @@ async function run() {
             res.send({ role: user?.role || 'user ' })
         })
 
-        app.patch('/users/:id/role', verifyFirebaseToken,verifyAdmin, async (req, res) => {
+        app.patch('/users/:id/role', verifyFirebaseToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const roleInfo = req.body;
             const query = { _id: new ObjectId(id) };
@@ -208,6 +217,38 @@ async function run() {
             res.send(result);
 
         })
+
+        app.patch('/orders/cancel/:id', verifyFirebaseToken, async (req, res) => {
+            const id = req.params.id;
+            const email = req.decoded_email;
+
+            const query = { _id: new ObjectId(id) };
+            const order = await ordersCollection.findOne(query);
+
+            if (!order) {
+                return res.status(404).send({ message: 'Order not found' });
+            }
+
+            //user nije cancel korte parbe na
+            if (order.email !== email) {
+                return res.status(403).send({ message: 'Forbidden access' });
+            }
+
+            // paid hole cancel hobe na
+            if (order.paymentStatus === 'paid') {
+                return res.status(400).send({ message: 'Paid order cannot be canceled' });
+            }
+
+            const update = {
+                $set: {
+                    status: 'canceled',
+                    canceledAt: new Date()
+                }
+            };
+
+            const result = await ordersCollection.updateOne(query, update);
+            res.send(result);
+        });
 
         // books api
 
@@ -294,7 +335,7 @@ async function run() {
                 const update = {
                     $set: {
                         paymentStatus: 'paid',
-                        status: 'complete',
+                        // status: 'complete',
                         // paidAt: new Date(),
                         trackingId: trackingId
                     }
