@@ -75,6 +75,7 @@ async function run() {
 
         const db = client.db('book_courier');
         const booksCollection = db.collection('books');
+        const wishlistsBooksCollection = db.collection('wishlists');
         const ordersCollection = db.collection('orders');
         const paymentCollection = db.collection('payments');
         const userCollection = db.collection('users');
@@ -249,6 +250,45 @@ async function run() {
             const result = await ordersCollection.updateOne(query, update);
             res.send(result);
         });
+
+        // Wishlist books api
+        app.get('/wishlists', async (req, res) => {
+            const query = {};
+            const {
+                userEmail } = req.query;
+            if (userEmail) {
+                query.userEmail = userEmail;
+            }
+
+            const cursor = wishlistsBooksCollection.find(query).sort({ wishlistsAt: -1 });
+            const result = await cursor.toArray();
+            res.send(result)
+
+        })
+
+        app.post('/wishlists', verifyFirebaseToken, async (req, res) => {
+            const { _id: bookId } = req.body;
+            const userEmail = req.decoded_email;
+
+            const exists = await wishlistsBooksCollection.findOne({
+                bookId,
+                userEmail
+            });
+
+            if (exists) {
+                return res.status(400).send({ message: 'Already wishlisted' });
+            }
+
+            const wishlistsBook = {
+                ...req.body,
+                userEmail,
+                wishlistsAt: new Date()
+            };
+
+            const result = await wishlistsBooksCollection.insertOne(wishlistsBook);
+            res.send(result);
+        });
+
 
         // books api
 
