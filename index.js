@@ -8,7 +8,12 @@ const crypto = require("crypto");
 
 const admin = require("firebase-admin");
 
-const serviceAccount = require("./book-courier-firebase-adminsdk.json");
+// const serviceAccount = require("./book-courier-firebase-adminsdk.json");
+
+// const serviceAccount = require("./firebase-admin-key.json");
+
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decoded);
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
@@ -70,7 +75,7 @@ const client = new MongoClient(uri, {
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
+        // await client.connect();
 
 
         const db = client.db('book_courier');
@@ -293,13 +298,27 @@ async function run() {
         // books api
 
         app.get('/books', async (req, res) => {
-            const query = {}
+            const { latest, email } = req.query;
+            let query = {
+                publishStatus: 'Published'
+            };
 
-            const cursor = booksCollection.find(query)
+            //  email user's books
+            if (email) {
+                query.email = email;
+            }
+
+            let cursor = booksCollection.find(query).sort({ createAt: -1 });
+
+            //  latest books (limit 6)
+            if (latest === 'true') {
+                cursor = cursor.sort({ createAt: -1 }).limit(6);
+            }
+
             const result = await cursor.toArray();
-            res.send(result)
+            res.send(result);
+        });
 
-        })
 
         app.get('/books/:id', async (req, res) => {
             const id = req.params.id;
@@ -314,6 +333,36 @@ async function run() {
             const result = await booksCollection.insertOne(book)
             res.send(result)
         })
+
+        app.patch('/books/:id', verifyFirebaseToken, async (req, res) => {
+            const id = req.params.id;
+            const userEmail = req.decoded_email;
+            const updateData = req.body;
+
+            // 1 find book
+            const book = await booksCollection.findOne({
+                _id: new ObjectId(id)
+            });
+
+            if (!book) {
+                return res.status(404).send({ message: "Book not found" });
+            }
+
+            // 2 ownership check
+            if (book.email !== userEmail) {
+                return res.status(403).send({ message: "Forbidden access" });
+            }
+
+            // 3update (partial / full)
+            const result = await booksCollection.updateOne(
+                { _id: new ObjectId(id) },
+                {
+                    $set: updateData
+                }
+            );
+
+            res.send(result);
+        });
 
 
         // payment related task
@@ -430,8 +479,8 @@ async function run() {
         })
 
         // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        // await client.db("admin").command({ ping: 1 });
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
